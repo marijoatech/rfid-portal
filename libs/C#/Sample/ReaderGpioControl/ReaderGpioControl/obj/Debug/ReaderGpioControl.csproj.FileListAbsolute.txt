@@ -1,0 +1,8 @@
+E:\公司资料\solid产品\读写器开发包资料\E系列\英文版\开发包(20250329)\C#\Sample\ReaderGpioControl\ReaderGpioControl\bin\Debug\ReaderGpioControl.exe
+E:\公司资料\solid产品\读写器开发包资料\E系列\英文版\开发包(20250329)\C#\Sample\ReaderGpioControl\ReaderGpioControl\bin\Debug\ReaderGpioControl.pdb
+E:\公司资料\solid产品\读写器开发包资料\E系列\英文版\开发包(20250329)\C#\Sample\ReaderGpioControl\ReaderGpioControl\bin\Debug\SReaderAPI.dll
+E:\公司资料\solid产品\读写器开发包资料\E系列\英文版\开发包(20250329)\C#\Sample\ReaderGpioControl\ReaderGpioControl\obj\Debug\ReaderGpioControl.csprojAssemblyReference.cache
+E:\公司资料\solid产品\读写器开发包资料\E系列\英文版\开发包(20250329)\C#\Sample\ReaderGpioControl\ReaderGpioControl\obj\Debug\ReaderGpioControl.csproj.CoreCompileInputs.cache
+E:\公司资料\solid产品\读写器开发包资料\E系列\英文版\开发包(20250329)\C#\Sample\ReaderGpioControl\ReaderGpioControl\obj\Debug\ReaderGpioControl.csproj.CopyComplete
+E:\公司资料\solid产品\读写器开发包资料\E系列\英文版\开发包(20250329)\C#\Sample\ReaderGpioControl\ReaderGpioControl\obj\Debug\ReaderGpioControl.exe
+E:\公司资料\solid产品\读写器开发包资料\E系列\英文版\开发包(20250329)\C#\Sample\ReaderGpioControl\ReaderGpioControl\obj\Debug\ReaderGpioControl.pdb
