@@ -1,0 +1,8 @@
+# Configuracion real del agente (contiene el token)
+src/PortalAgent/dist/agent.json
+src/PortalAgent/PortalAgent.zip
+src/PortalAgent/dist/logs/
+
+# Herramientas de diagnostico local
+tools/DiagnosePortales.php
+tools/PortalProbe/

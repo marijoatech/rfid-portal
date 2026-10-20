@@ -1,0 +1,12 @@
+{
+  "Agente": "AGENTE-PORTONES-1",
+  "MarijoaUrl": "http://192.168.10.10/marijoa/rfid/api/portal.php",
+  "Token": "PEGAR_AQUI_EL_TOKEN_DEL_AGENTE",
+  "Lectores": [],
+  "PollSegundos": 2,
+  "DedupeSegundos": 60,
+  "LogEpcs": true,
+  "FondoSegundos": 12,
+  "FondoMinLecturas": 2,
+  "LogArchivo": "logs/portal-agent.log"
+}
