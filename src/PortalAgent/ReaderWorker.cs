@@ -11,8 +11,32 @@ namespace PortalAgent
     {
         private sealed class GpoCommand
         {
-            public int Id;
+            public int IdComando;
+            public int Gpo;
             public int Seconds;
+        }
+
+        public sealed class GpoResult
+        {
+            public int IdComando;
+            public int Gpo;
+            public int Seconds;
+            public bool Success;
+            public string Message;
+        }
+
+        private sealed class PowerCommand
+        {
+            public int Id;
+            public int Power;
+        }
+
+        public sealed class PowerResult
+        {
+            public int Id;
+            public int Power;
+            public bool Success;
+            public string Message;
         }
 
         private sealed class AntennaConfig
@@ -24,10 +48,14 @@ namespace PortalAgent
 
         private readonly ConcurrentQueue<Reading> queue = new ConcurrentQueue<Reading>();
         private readonly ConcurrentQueue<GpoCommand> gpoQueue = new ConcurrentQueue<GpoCommand>();
-        private readonly List<AntennaConfig> antennas = new List<AntennaConfig>();
+        private readonly ConcurrentQueue<GpoResult> gpoResults = new ConcurrentQueue<GpoResult>();
+        private readonly ConcurrentQueue<PowerCommand> powerQueue = new ConcurrentQueue<PowerCommand>();
+        private readonly ConcurrentQueue<PowerResult> powerResults = new ConcurrentQueue<PowerResult>();
+        private readonly List<AntennaConfig> activeAntennas = new List<AntennaConfig>();
         private readonly HashSet<string> background = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Logger logger;
         private readonly int channels;
+        private readonly int[] portPowers;
         private volatile bool running;
         private Thread thread;
         private SReader reader;
@@ -45,22 +73,31 @@ namespace PortalAgent
             IdLector = idLector;
             this.channels = channels > 0 ? channels : 8;
             this.logger = logger;
+            portPowers = new int[this.channels];
+            for (int i = 0; i < portPowers.Length; i++) { portPowers[i] = 20; }
 
             if (antennaRows != null)
             {
                 foreach (JObject row in antennaRows)
                 {
+                    int port = (int)row["puerto"];
+                    int power = (int)row["potencia"];
+                    if (port >= 1 && port <= portPowers.Length)
+                    {
+                        portPowers[port - 1] = Math.Max(0, Math.Min(30, power));
+                    }
+
                     int active = (int)row["activa"];
                     if (active != 1) { continue; }
                     AntennaConfig antenna = new AntennaConfig();
-                    antenna.Puerto = (int)row["puerto"];
-                    antenna.Potencia = (int)row["potencia"];
+                    antenna.Puerto = port;
+                    antenna.Potencia = power;
                     antenna.RssiMin = (int)row["rssi_min"];
-                    antennas.Add(antenna);
+                    activeAntennas.Add(antenna);
                 }
             }
 
-            antennas.Sort(delegate(AntennaConfig a, AntennaConfig b) { return a.Puerto.CompareTo(b.Puerto); });
+            activeAntennas.Sort(delegate(AntennaConfig a, AntennaConfig b) { return a.Puerto.CompareTo(b.Puerto); });
         }
 
         public void Start()
@@ -111,12 +148,37 @@ namespace PortalAgent
             return !string.IsNullOrEmpty(epc) && background.Contains(epc);
         }
 
-        public void EnqueueGpo(int id, int seconds)
+        public void EnqueueGpo(int idComando, int gpo, int seconds)
         {
             GpoCommand command = new GpoCommand();
-            command.Id = id;
+            command.IdComando = idComando;
+            command.Gpo = gpo;
             command.Seconds = seconds;
             gpoQueue.Enqueue(command);
+        }
+
+        public List<GpoResult> DrainGpoResults()
+        {
+            List<GpoResult> results = new List<GpoResult>();
+            GpoResult result;
+            while (gpoResults.TryDequeue(out result)) { results.Add(result); }
+            return results;
+        }
+
+        public void EnqueuePower(int id, int power)
+        {
+            PowerCommand command = new PowerCommand();
+            command.Id = id;
+            command.Power = Math.Max(0, Math.Min(30, power));
+            powerQueue.Enqueue(command);
+        }
+
+        public List<PowerResult> DrainPowerResults()
+        {
+            List<PowerResult> results = new List<PowerResult>();
+            PowerResult result;
+            while (powerResults.TryDequeue(out result)) { results.Add(result); }
+            return results;
         }
 
         private void Loop()
@@ -131,20 +193,9 @@ namespace PortalAgent
                     LastError = "";
                     logger.Info("Lector " + Portal + " (" + Ip + ") conectado.");
 
-                    int[] powers = new int[channels];
-                    for (int i = 0; i < powers.Length; i++) { powers[i] = 20; }
-                    foreach (AntennaConfig antenna in antennas)
-                    {
-                        if (antenna.Puerto >= 1 && antenna.Puerto <= powers.Length)
-                        {
-                            powers[antenna.Puerto - 1] = antenna.Potencia;
-                        }
-                    }
-
                     try
                     {
-                        if (channels > 1) { reader.SetPortReadPower(powers); }
-                        else { reader.SetReaderPower(powers[0]); }
+                        ApplyPower();
                     }
                     catch (Exception ex)
                     {
@@ -153,27 +204,72 @@ namespace PortalAgent
 
                     reader.TagRead += OnTagRead;
                     List<int> ports = new List<int>();
-                    foreach (AntennaConfig antenna in antennas) { ports.Add(antenna.Puerto); }
-                    logger.Info("Lector " + Portal + " (" + Ip + ") leyendo puertos " + Join(ports) + ".");
+                    foreach (AntennaConfig antenna in activeAntennas) { ports.Add(antenna.Puerto); }
+                    logger.Info("Lector " + Portal + " (" + Ip + ") leyendo puertos " + Join(ports) +
+                        " a " + portPowers[0] + " dBm por puerto.");
 
                     while (running)
                     {
+                        PowerCommand power;
+                        while (powerQueue.TryDequeue(out power))
+                        {
+                            int[] previous = (int[])portPowers.Clone();
+                            for (int i = 0; i < portPowers.Length; i++) { portPowers[i] = power.Power; }
+
+                            PowerResult result = new PowerResult();
+                            result.Id = power.Id;
+                            result.Power = power.Power;
+
+                            try
+                            {
+                                try { reader.Inventry_stop(); } catch { }
+                                ApplyPower();
+                                result.Success = true;
+                                result.Message = "Potencia " + power.Power +
+                                    " dBm aplicada a " + portPowers.Length + " puertos.";
+                                logger.Info("Potencia actualizada en " + Ip + ": " +
+                                    power.Power + " dBm en " + portPowers.Length + " puertos.");
+                            }
+                            catch (Exception ex)
+                            {
+                                Array.Copy(previous, portPowers, portPowers.Length);
+                                try { ApplyPower(); } catch { }
+                                result.Success = false;
+                                result.Message = "No se pudo aplicar potencia: " + ex.Message;
+                                logger.Error("Potencia en " + Ip + ": " + ex.Message);
+                            }
+
+                            powerResults.Enqueue(result);
+                        }
+
                         GpoCommand gpo;
                         while (gpoQueue.TryDequeue(out gpo))
                         {
+                            GpoResult result = new GpoResult();
+                            result.IdComando = gpo.IdComando;
+                            result.Gpo = gpo.Gpo;
+                            result.Seconds = gpo.Seconds;
+
                             try
                             {
-                                reader.SetGPO(gpo.Id, 1, gpo.Seconds);
-                                logger.Info("Sirena: GPO " + gpo.Id + " activo por " +
+                                reader.SetGPO(result.Gpo, 1, result.Seconds);
+                                result.Success = true;
+                                result.Message = "Lector acepto pulso GPO " + result.Gpo +
+                                    " por " + result.Seconds + " s.";
+                                logger.Info("Sirena: GPO " + result.Gpo + " activo por " +
                                     gpo.Seconds + " segundos en " + Ip + ".");
                             }
                             catch (Exception ex)
                             {
-                                logger.Error("Sirena GPO " + gpo.Id + " en " + Ip + ": " + ex.Message);
+                                result.Success = false;
+                                result.Message = "Error GPO " + result.Gpo + ": " + ex.Message;
+                                logger.Error("Sirena GPO " + result.Gpo + " en " + Ip + ": " + ex.Message);
                             }
+
+                            gpoResults.Enqueue(result);
                         }
 
-                        foreach (AntennaConfig antenna in antennas)
+                        foreach (AntennaConfig antenna in activeAntennas)
                         {
                             if (!running) { break; }
                             if (channels <= 1)
@@ -224,7 +320,7 @@ namespace PortalAgent
                 if (lote == "") { return; }
 
                 int rssiMin = -80;
-                foreach (AntennaConfig antenna in antennas)
+                foreach (AntennaConfig antenna in activeAntennas)
                 {
                     if (antenna.Puerto == tag.Ant) { rssiMin = antenna.RssiMin; break; }
                 }
@@ -242,6 +338,13 @@ namespace PortalAgent
             {
                 logger.Error("Lector " + Ip + " procesando etiqueta: " + ex.Message);
             }
+        }
+
+        private void ApplyPower()
+        {
+            if (reader == null) { throw new InvalidOperationException("No hay lector conectado."); }
+            if (channels > 1) { reader.SetPortReadPower((int[])portPowers.Clone()); }
+            else { reader.SetReaderPower(portPowers[0]); }
         }
 
         private static string Normalize(string epc)

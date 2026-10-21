@@ -5,7 +5,8 @@
   "Lectores": [],
   "PollSegundos": 2,
   "DedupeSegundos": 60,
-  "LogEpcs": true,
+  "LogEpcs": false,
+  "ResumenLogSegundos": 60,
   "FondoSegundos": 12,
   "FondoMinLecturas": 2,
   "LogArchivo": "logs/portal-agent.log"

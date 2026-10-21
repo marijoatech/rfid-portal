@@ -126,6 +126,28 @@ tenga salida HTTP/HTTPS al servidor Marijoa y alcance `192.168.3.60`.
 - El fondo aprendido filtra ruido no documentado, pero **no bloquea una pieza que
   despues sale en una sesion**. Si un EPC del fondo aparece en la sesion, se acepta;
   si cambia la zona, se limpia y se vuelve a entrenar.
+- La potencia de calibracion se ajusta desde **Portales RFID** en Marijoa. Un solo
+  control cambia todos los puertos del lector; el agente aplica la orden al hardware
+  y confirma el resultado. El punto inicial medido es 16-18 dBm.
+- El archivo de texto del agente usa resumenes cada 60 segundos y conserva los
+  ultimos lotes vistos. El detalle EPC por EPC queda en `rfid_hist`; `LogEpcs: true`
+  se reserva para diagnostico y genera mucho mas volumen.
+
+### Diagnostico de GPO / sirena externa
+
+`Ejecutado` en Marijoa significa que el SDK del lector acepto el pulso GPO. No
+demuestra por si solo que una sirena, baliza o rele externo haya quedado conectado.
+La salida GPO del lector es una senal de baja tension; una sirena de 12/24/220 V no
+debe conectarse directamente sin conocer su consumo y usar el rele o driver adecuado.
+
+Si los tres GPO responden desde la web pero no ocurre nada fisicamente:
+
+1. Confirmar en el lector cual bornera corresponde a GND y a GPO 1/2/3.
+2. Probar con un pulso largo (30-60 s) y medir en DC entre GPO y GND.
+3. Verificar que la sirena/baliza tenga su propia alimentacion y que el contacto del
+   rele corte la linea correcta.
+4. No puentear ni conectar 220 V al lector. Solicitar al fabricante el esquema
+   electrico del modelo y la corriente maxima permitida por GPO.
 
 ### Puertas y lectores (4 puertas, 1 lector por puerta)
 

@@ -8,8 +8,46 @@ namespace PortalAgent
 {
     internal static class Program
     {
+        private sealed class PendingConfig
+        {
+            public int Power;
+            public int Remaining;
+            public int Succeeded;
+            public int Failed;
+            public string Errors = "";
+        }
+
+        private sealed class PendingGpo
+        {
+            public int Gpo;
+            public int Seconds;
+            public int Remaining;
+            public int Succeeded;
+            public int Failed;
+            public string Errors = "";
+        }
+
+        private sealed class LogSummary
+        {
+            public DateTime Since = DateTime.Now;
+            public int Envios;
+            public int Enviadas;
+            public int Guardadas;
+            public int Repetidas;
+            public int Logs;
+            public int SinDoc;
+            public string Sesion = "-";
+            public Queue<string> Ultimos = new Queue<string>();
+        }
+
         private static volatile bool running = true;
         private static Mutex singleInstance;
+        private static readonly Dictionary<int, PendingConfig> pendingConfigs =
+            new Dictionary<int, PendingConfig>();
+        private static readonly Dictionary<int, PendingGpo> pendingGpos =
+            new Dictionary<int, PendingGpo>();
+        private static readonly Dictionary<string, LogSummary> logSummaries =
+            new Dictionary<string, LogSummary>();
         private static bool training;
         private static DateTime trainingUntil;
         private static string trainingPortal = "";
@@ -84,6 +122,8 @@ namespace PortalAgent
                     }
                 }
 
+                ProcessGpoResults(workers, api, logger);
+                ProcessPowerResults(workers, api, logger);
                 HandleTrainingFlags(workers, sessions, api, logger, config);
                 if (training)
                 {
@@ -92,7 +132,7 @@ namespace PortalAgent
                 else
                 {
                     SendQueues(workers, sessions, sessionCodes, api, logger, lastSent,
-                        config.DedupeSegundos, config.LogEpcs);
+                        config.DedupeSegundos, config.LogEpcs, config.ResumenLogSegundos);
                 }
                 Thread.Sleep(1000);
             }
@@ -276,28 +316,166 @@ namespace PortalAgent
                         gpo = Math.Max(1, Math.Min(3, gpo));
                         segundos = Math.Max(1, Math.Min(60, segundos));
 
-                        bool enviado = false;
+                        List<ReaderWorker> objetivos = new List<ReaderWorker>();
                         foreach (ReaderWorker worker in workers.Values)
                         {
-                            if (worker.Portal == codigo)
-                            {
-                                worker.EnqueueGpo(gpo, segundos);
-                                enviado = true;
-                            }
+                            if (worker.Portal == codigo) { objetivos.Add(worker); }
                         }
 
-                        if (enviado)
-                        {
-                            AckCommand(api, idComando, "Ejecutado",
-                                "Sirena GPO " + gpo + " por " + segundos + " s.");
-                        }
-                        else
+                        if (objetivos.Count == 0)
                         {
                             AckCommand(api, idComando, "Error", "No se pudo encolar la sirena.");
                         }
+                        else
+                        {
+                            PendingGpo pendiente = new PendingGpo();
+                            pendiente.Gpo = gpo;
+                            pendiente.Seconds = segundos;
+                            pendiente.Remaining = objetivos.Count;
+                            pendingGpos[idComando] = pendiente;
+
+                            foreach (ReaderWorker worker in objetivos)
+                            {
+                                worker.EnqueueGpo(idComando, gpo, segundos);
+                            }
+                            logger.Info("Sirena GPO " + gpo + " por " + segundos +
+                                " s encolada para " + objetivos.Count + " lector(es) de " + codigo + ".");
+                        }
+                    }
+                    else if (tipo == "CONFIGURAR")
+                    {
+                        int potencia = 20;
+                        string payload = (string) comando["payload"];
+                        if (!string.IsNullOrEmpty(payload))
+                        {
+                            try
+                            {
+                                JObject datos = JObject.Parse(payload);
+                                if (datos["potencia"] != null) { potencia = (int) datos["potencia"]; }
+                            }
+                            catch { }
+                        }
+                        potencia = Math.Max(0, Math.Min(30, potencia));
+
+                        List<ReaderWorker> objetivos = new List<ReaderWorker>();
+                        foreach (ReaderWorker worker in workers.Values)
+                        {
+                            if (worker.Portal == codigo) { objetivos.Add(worker); }
+                        }
+
+                        if (objetivos.Count == 0)
+                        {
+                            AckCommand(api, idComando, "Error",
+                                "No hay lector local para aplicar la potencia.");
+                            continue;
+                        }
+
+                        if (pendingConfigs.ContainsKey(idComando)) { continue; }
+
+                        PendingConfig pendiente = new PendingConfig();
+                        pendiente.Power = potencia;
+                        pendiente.Remaining = objetivos.Count;
+                        pendingConfigs[idComando] = pendiente;
+
+                        foreach (ReaderWorker worker in objetivos)
+                        {
+                            worker.EnqueuePower(idComando, potencia);
+                        }
+                        logger.Info("Potencia " + potencia + " dBm encolada para " +
+                            objetivos.Count + " lector(es) de " + codigo + ".");
                     }
                 }
             }
+        }
+
+        private static void ProcessGpoResults(
+            Dictionary<string, ReaderWorker> workers,
+            ApiClient api,
+            Logger logger)
+        {
+            List<int> terminados = new List<int>();
+
+            foreach (ReaderWorker worker in workers.Values)
+            {
+                foreach (ReaderWorker.GpoResult result in worker.DrainGpoResults())
+                {
+                    PendingGpo pendiente;
+                    if (!pendingGpos.TryGetValue(result.IdComando, out pendiente)) { continue; }
+
+                    pendiente.Remaining--;
+                    if (result.Success)
+                    {
+                        pendiente.Succeeded++;
+                    }
+                    else
+                    {
+                        pendiente.Failed++;
+                        pendiente.Errors += (pendiente.Errors == "" ? "" : " | ") + result.Message;
+                    }
+
+                    if (pendiente.Remaining > 0) { continue; }
+
+                    if (pendiente.Failed == 0)
+                    {
+                        AckCommand(api, result.IdComando, "Ejecutado",
+                            "Lector acepto GPO " + pendiente.Gpo + " por " +
+                            pendiente.Seconds + " s (" + pendiente.Succeeded + " lector/es).");
+                    }
+                    else
+                    {
+                        AckCommand(api, result.IdComando, "Error",
+                            "Fallaron " + pendiente.Failed + " lector(es): " + pendiente.Errors);
+                    }
+                    terminados.Add(result.IdComando);
+                }
+            }
+
+            foreach (int id in terminados) { pendingGpos.Remove(id); }
+        }
+
+        private static void ProcessPowerResults(
+            Dictionary<string, ReaderWorker> workers,
+            ApiClient api,
+            Logger logger)
+        {
+            List<int> terminados = new List<int>();
+
+            foreach (ReaderWorker worker in workers.Values)
+            {
+                foreach (ReaderWorker.PowerResult result in worker.DrainPowerResults())
+                {
+                    PendingConfig pendiente;
+                    if (!pendingConfigs.TryGetValue(result.Id, out pendiente)) { continue; }
+
+                    pendiente.Remaining--;
+                    if (result.Success)
+                    {
+                        pendiente.Succeeded++;
+                    }
+                    else
+                    {
+                        pendiente.Failed++;
+                        pendiente.Errors += (pendiente.Errors == "" ? "" : " | ") + result.Message;
+                    }
+
+                    if (pendiente.Remaining > 0) { continue; }
+
+                    if (pendiente.Failed == 0)
+                    {
+                        AckCommand(api, result.Id, "Ejecutado",
+                            "Potencia " + pendiente.Power + " dBm aplicada a " +
+                            pendiente.Succeeded + " lector(es).");
+                    }
+                    else
+                    {
+                        AckCommand(api, result.Id, "Error",
+                            "Fallaron " + pendiente.Failed + " lector(es): " + pendiente.Errors);
+                    }
+                    terminados.Add(result.Id);
+                }
+            }
+
+            foreach (int id in terminados) { pendingConfigs.Remove(id); }
         }
 
         private static void SendQueues(
@@ -308,7 +486,8 @@ namespace PortalAgent
             Logger logger,
             Dictionary<string, DateTime> lastSent,
             int dedupeSeconds,
-            bool logEpcs)
+            bool logEpcs,
+            int summarySeconds)
         {
             Dictionary<string, List<Reading>> batches = new Dictionary<string, List<Reading>>();
 
@@ -367,18 +546,81 @@ namespace PortalAgent
                     try
                     {
                         JObject result = api.SendReadings(portal, idSesion, chunk);
-                        logger.Info("Portal " + portal + " | sesion " + codigoSesion +
-                            " | enviadas " + chunk.Count +
-                            " | guardadas " + (int) result["guardados"] +
-                            " | repetidas " + (int) result["repetidos"] +
-                            " | logs " + (int) result["logs"] +
-                            " | sin_doc " + (int) result["sin_doc"]);
+                        UpdateLogSummary(portal, codigoSesion, chunk, result);
                     }
                     catch (Exception ex)
                     {
                         logger.Error("Envio de lecturas " + portal + ": " + ex.Message);
                     }
                 }
+            }
+
+            FlushLogSummaries(logger, summarySeconds);
+        }
+
+        private static void UpdateLogSummary(
+            string portal,
+            string sessionCode,
+            List<Reading> readings,
+            JObject result)
+        {
+            LogSummary summary;
+            if (!logSummaries.TryGetValue(portal, out summary))
+            {
+                summary = new LogSummary();
+                logSummaries[portal] = summary;
+            }
+
+            summary.Envios++;
+            summary.Enviadas += readings.Count;
+            summary.Guardadas += (int) result["guardados"];
+            summary.Repetidas += (int) result["repetidos"];
+            summary.Logs += (int) result["logs"];
+            summary.SinDoc += (int) result["sin_doc"];
+            summary.Sesion = string.IsNullOrEmpty(sessionCode) ? "-" : sessionCode;
+
+            foreach (Reading reading in readings)
+            {
+                string lote = reading.Lote;
+                if (summary.Ultimos.Contains(lote)) { continue; }
+                summary.Ultimos.Enqueue(lote);
+                while (summary.Ultimos.Count > 3) { summary.Ultimos.Dequeue(); }
+            }
+        }
+
+        private static void FlushLogSummaries(Logger logger, int summarySeconds)
+        {
+            if (summarySeconds <= 0) { summarySeconds = 60; }
+            DateTime now = DateTime.Now;
+
+            foreach (KeyValuePair<string, LogSummary> item in logSummaries)
+            {
+                LogSummary summary = item.Value;
+                if ((now - summary.Since).TotalSeconds < summarySeconds) { continue; }
+
+                if (summary.Enviadas > 0)
+                {
+                    logger.Info("Resumen " + item.Key + " | " +
+                        Math.Max(1, (int)(now - summary.Since).TotalSeconds) + "s" +
+                        " | sesion " + summary.Sesion +
+                        " | envios " + summary.Envios +
+                        " | enviadas " + summary.Enviadas +
+                        " | guardadas " + summary.Guardadas +
+                        " | repetidas " + summary.Repetidas +
+                        " | logs " + summary.Logs +
+                        " | sin_doc " + summary.SinDoc +
+                        " | ultimos " + string.Join(",", summary.Ultimos.ToArray()));
+                }
+
+                summary.Since = now;
+                summary.Envios = 0;
+                summary.Enviadas = 0;
+                summary.Guardadas = 0;
+                summary.Repetidas = 0;
+                summary.Logs = 0;
+                summary.SinDoc = 0;
+                summary.Sesion = "-";
+                summary.Ultimos.Clear();
             }
         }
 

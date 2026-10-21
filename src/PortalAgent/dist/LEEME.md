@@ -21,6 +21,8 @@ lectores que se quieren probar:
   "Lectores": ["192.168.3.60"],
   "PollSegundos": 2,
   "DedupeSegundos": 60,
+  "LogEpcs": false,
+  "ResumenLogSegundos": 60,
   "LogArchivo": "logs/portal-agent.log"
 }
 ```
@@ -42,10 +44,18 @@ PortalAgent.exe
 El agente consulta Marijoa cada 2 segundos, conecta el lector, lee y envia.
 Con `Ctrl+C` se detiene.
 
-Con `LogEpcs: true` en `agent.json`, el log muestra una linea por lectura
-aceptada con EPC, lote, antena y RSSI. No registra las etiquetas de fondo ni
-las repeticiones dentro de la ventana de dedupe. El log rota a los 5 MB y
-conserva un archivo anterior (`portal-agent.log.1`).
+Por defecto `LogEpcs` es `false`: el log escribe un resumen por portal cada 60
+segundos con cantidades enviadas/guardadas/repetidas y los ultimos 3 lotes, en
+lugar de una linea por cada EPC. Para diagnostico detallado se puede usar
+`LogEpcs: true`; en ese caso tambien registra EPC, lote, antena y RSSI de cada
+lectura aceptada. El historial completo de pasos sigue en `rfid_hist`, no en el
+archivo de texto. El log rota a los 5 MB y conserva un archivo anterior
+(`portal-agent.log.1`).
+
+La potencia se calibra desde Marijoa: **Portales RFID > Potencia general**. El
+control cambia los 8 puertos del lector en conjunto, sin tener que ajustar
+antena por antena. El agente confirma el comando solo despues de aplicar la
+potencia al lector.
 
 ## Entrenar el fondo
 
