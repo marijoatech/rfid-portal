@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = (Resolve-Path (Join-Path $here '..\..')).Path
-$sdk = Join-Path $repo 'libs\C#\dll\SReaderAPI.dll'
+$sdk = Join-Path $repo 'libs\Demo3.71311\SReaderAPI.dll'
 
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path -LiteralPath $csc)) {

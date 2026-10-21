@@ -57,6 +57,8 @@ namespace PortalAgent
         private readonly int channels;
         private readonly int[] portPowers;
         private volatile bool running;
+        private volatile bool liveLogEnabled;
+        private volatile bool coverageEnabled;
         private Thread thread;
         private SReader reader;
 
@@ -65,6 +67,17 @@ namespace PortalAgent
         public int IdLector { get; private set; }
         public string LastError { get; private set; }
         public bool IsConnected { get; private set; }
+        public bool LiveLogEnabled
+        {
+            get { return liveLogEnabled; }
+            set { liveLogEnabled = value; }
+        }
+        public bool CoverageEnabled
+        {
+            get { return coverageEnabled; }
+            set { coverageEnabled = value; }
+        }
+        public DateTime LiveLogUntil { get; set; }
 
         public ReaderWorker(string portal, string ip, int idLector, int channels, JArray antennaRows, Logger logger)
         {
@@ -256,14 +269,14 @@ namespace PortalAgent
                                 result.Success = true;
                                 result.Message = "Lector acepto pulso GPO " + result.Gpo +
                                     " por " + result.Seconds + " s.";
-                                logger.Info("Sirena: GPO " + result.Gpo + " activo por " +
+                                logger.Info("Salida GPO " + result.Gpo + " activa por " +
                                     gpo.Seconds + " segundos en " + Ip + ".");
                             }
                             catch (Exception ex)
                             {
                                 result.Success = false;
                                 result.Message = "Error GPO " + result.Gpo + ": " + ex.Message;
-                                logger.Error("Sirena GPO " + result.Gpo + " en " + Ip + ": " + ex.Message);
+                                logger.Error("Salida GPO " + result.Gpo + " en " + Ip + ": " + ex.Message);
                             }
 
                             gpoResults.Enqueue(result);

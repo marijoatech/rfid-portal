@@ -15,6 +15,7 @@ namespace PortalAgent
         public bool LogEpcs { get; set; }
         public int ResumenLogSegundos { get; set; }
         public int FondoSegundos { get; set; }
+        public int FondoSilencioSegundos { get; set; }
         public int FondoMinLecturas { get; set; }
         public string LogArchivo { get; set; }
 
@@ -41,7 +42,8 @@ namespace PortalAgent
             if (config.PollSegundos <= 0) { config.PollSegundos = 2; }
             if (config.DedupeSegundos <= 0) { config.DedupeSegundos = 60; }
             if (config.ResumenLogSegundos <= 0) { config.ResumenLogSegundos = 60; }
-            if (config.FondoSegundos <= 0) { config.FondoSegundos = 12; }
+            if (config.FondoSegundos <= 0) { config.FondoSegundos = 180; }
+            if (config.FondoSilencioSegundos < 0) { config.FondoSilencioSegundos = 0; }
             if (config.FondoMinLecturas <= 0) { config.FondoMinLecturas = 2; }
             if (string.IsNullOrEmpty(config.LogArchivo)) { config.LogArchivo = "logs/portal-agent.log"; }
 

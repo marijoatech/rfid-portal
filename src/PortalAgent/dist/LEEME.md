@@ -23,6 +23,8 @@ lectores que se quieren probar:
   "DedupeSegundos": 60,
   "LogEpcs": false,
   "ResumenLogSegundos": 60,
+  "FondoSegundos": 180,
+  "FondoSilencioSegundos": 0,
   "LogArchivo": "logs/portal-agent.log"
 }
 ```
@@ -62,8 +64,8 @@ potencia al lector.
 1. Dejar la puerta **vacia** (sin piezas en transito).
 2. Verificar que `PortalAgent.exe` este corriendo.
 3. Ejecutar `Aprender-fondo.cmd`.
-4. El agente aprende durante 12 segundos los EPC vistos 2 o mas veces y los
-   guarda en `exp_portal_fondo`.
+4. El agente guarda los EPC vistos 2 o mas veces. El aprendizaje continua hasta
+   presionar **Terminar aprendizaje**, con un maximo de seguridad de 180 segundos.
 5. Desde ese momento esos EPC no se envian a Marijoa.
 
 El fondo no bloquea una pieza que luego sale en un documento: si un EPC

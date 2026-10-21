@@ -49,7 +49,9 @@ namespace PortalAgent
         private static readonly Dictionary<string, LogSummary> logSummaries =
             new Dictionary<string, LogSummary>();
         private static bool training;
+        private static DateTime trainingStartedAt;
         private static DateTime trainingUntil;
+        private static DateTime trainingLastNewAt;
         private static string trainingPortal = "";
         private static int trainingCommandId;
         private static readonly Dictionary<string, int> trainingCounts = new Dictionary<string, int>();
@@ -280,6 +282,22 @@ namespace PortalAgent
                             AckCommand(api, idComando, "Error", "Ya hay un entrenamiento en curso.");
                         }
                     }
+                    else if (tipo == "DETENER_APRENDIZAJE")
+                    {
+                        if (!training ||
+                            (trainingPortal != "" && trainingPortal != codigo))
+                        {
+                            AckCommand(api, idComando, "Error",
+                                "No hay un aprendizaje en curso para este portal.");
+                        }
+                        else
+                        {
+                            int aprendidos = FinishTraining(workers, api, logger, config,
+                                "detencion manual desde Marijoa");
+                            AckCommand(api, idComando, "Ejecutado",
+                                "Aprendizaje finalizado: " + aprendidos + " EPCs.");
+                        }
+                    }
                     else if (tipo == "LIMPIAR_FONDO")
                     {
                         if (codigo == "" || !HasWorkerForPortal(workers, codigo))
@@ -313,7 +331,7 @@ namespace PortalAgent
                             }
                             catch { }
                         }
-                        gpo = Math.Max(1, Math.Min(3, gpo));
+                        gpo = Math.Max(1, Math.Min(4, gpo));
                         segundos = Math.Max(1, Math.Min(60, segundos));
 
                         List<ReaderWorker> objetivos = new List<ReaderWorker>();
@@ -324,7 +342,7 @@ namespace PortalAgent
 
                         if (objetivos.Count == 0)
                         {
-                            AckCommand(api, idComando, "Error", "No se pudo encolar la sirena.");
+                            AckCommand(api, idComando, "Error", "No se pudo encolar la salida GPO.");
                         }
                         else
                         {
@@ -338,7 +356,7 @@ namespace PortalAgent
                             {
                                 worker.EnqueueGpo(idComando, gpo, segundos);
                             }
-                            logger.Info("Sirena GPO " + gpo + " por " + segundos +
+                            logger.Info("Salida GPO " + gpo + " por " + segundos +
                                 " s encolada para " + objetivos.Count + " lector(es) de " + codigo + ".");
                         }
                     }
@@ -384,6 +402,41 @@ namespace PortalAgent
                         logger.Info("Potencia " + potencia + " dBm encolada para " +
                             objetivos.Count + " lector(es) de " + codigo + ".");
                     }
+                    else if (tipo == "INICIAR_LOG" || tipo == "INICIAR_COBERTURA" ||
+                        tipo == "DETENER_LOG")
+                    {
+                        bool activar = tipo != "DETENER_LOG";
+                        bool cobertura = tipo == "INICIAR_COBERTURA";
+                        bool encontrado = false;
+
+                        foreach (ReaderWorker worker in workers.Values)
+                        {
+                            if (worker.Portal != codigo) { continue; }
+                            worker.LiveLogEnabled = activar && !cobertura;
+                            worker.CoverageEnabled = activar && cobertura;
+                            worker.LiveLogUntil = activar
+                                ? DateTime.Now.AddMinutes(3)
+                                : DateTime.MinValue;
+                            encontrado = true;
+                        }
+
+                        if (encontrado)
+                        {
+                            AckCommand(api, idComando, "Ejecutado",
+                                activar
+                                    ? (cobertura ? "Prueba de cobertura iniciada." :
+                                        "Log en tiempo real iniciado.")
+                                    : "Log en tiempo real detenido.");
+                            logger.Info((activar
+                                    ? (cobertura ? "Prueba de cobertura iniciada" : "Log en vivo iniciado")
+                                    : "Log en vivo detenido") +
+                                " para " + codigo + ".");
+                        }
+                        else
+                        {
+                            AckCommand(api, idComando, "Error", "No hay lector local para el log.");
+                        }
+                    }
                 }
             }
         }
@@ -418,7 +471,7 @@ namespace PortalAgent
                     if (pendiente.Failed == 0)
                     {
                         AckCommand(api, result.IdComando, "Ejecutado",
-                            "Lector acepto GPO " + pendiente.Gpo + " por " +
+                            "Lector acepto salida GPO " + pendiente.Gpo + " por " +
                             pendiente.Seconds + " s (" + pendiente.Succeeded + " lector/es).");
                     }
                     else
@@ -490,12 +543,43 @@ namespace PortalAgent
             int summarySeconds)
         {
             Dictionary<string, List<Reading>> batches = new Dictionary<string, List<Reading>>();
+            Dictionary<string, List<Reading>> debugBatches = new Dictionary<string, List<Reading>>();
+            Dictionary<string, Reading> debugUnicos = new Dictionary<string, Reading>();
 
             foreach (ReaderWorker worker in workers.Values)
             {
                 List<Reading> readings = worker.Drain();
                 foreach (Reading reading in readings)
                 {
+                    if ((worker.LiveLogEnabled || worker.CoverageEnabled) &&
+                        DateTime.Now >= worker.LiveLogUntil)
+                    {
+                        worker.LiveLogEnabled = false;
+                        worker.CoverageEnabled = false;
+                        logger.Info("Log en vivo cerrado automaticamente por limite de 3 minutos: " +
+                            worker.Portal + " (" + worker.Ip + ").");
+                    }
+                    if ((worker.CoverageEnabled ||
+                        (worker.LiveLogEnabled && !worker.IsBackground(reading.Epc))))
+                    {
+                        string debugKey = worker.Portal + "|" + reading.Epc;
+                        Reading debug;
+                        if (debugUnicos.TryGetValue(debugKey, out debug))
+                        {
+                            debug.Repeticiones++;
+                        }
+                        else
+                        {
+                            reading.Repeticiones = 1;
+                            debugUnicos[debugKey] = reading;
+                            if (!debugBatches.ContainsKey(worker.Portal))
+                            {
+                                debugBatches[worker.Portal] = new List<Reading>();
+                            }
+                            debugBatches[worker.Portal].Add(reading);
+                        }
+                    }
+
                     // Con una sesion armada se envia todo: el servidor decide si
                     // el EPC es fondo o si pertenece al documento. Asi una pieza
                     // aprendida como fondo no queda bloqueada si luego sale.
@@ -518,6 +602,24 @@ namespace PortalAgent
                         batches[worker.Portal] = new List<Reading>();
                     }
                     batches[worker.Portal].Add(reading);
+                }
+            }
+
+            foreach (KeyValuePair<string, List<Reading>> debugBatch in debugBatches)
+            {
+                List<Reading> debugAll = debugBatch.Value;
+                for (int offset = 0; offset < debugAll.Count; offset += 100)
+                {
+                    int count = Math.Min(100, debugAll.Count - offset);
+                    List<Reading> debugChunk = debugAll.GetRange(offset, count);
+                    try
+                    {
+                        api.SendDebugReadings(debugBatch.Key, debugChunk);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error("Log en vivo " + debugBatch.Key + ": " + ex.Message);
+                    }
                 }
             }
 
@@ -694,10 +796,12 @@ namespace PortalAgent
             trainingPortal = portal ?? "";
             trainingCommandId = 0;
             training = true;
+            trainingStartedAt = DateTime.Now;
+            trainingLastNewAt = trainingStartedAt;
             trainingUntil = DateTime.Now.AddSeconds(config.FondoSegundos);
             logger.Info("Aprendiendo fondo de " + (trainingPortal == "" ? "todos los portales" : trainingPortal) +
-                " durante " + config.FondoSegundos +
-                " segundos. La puerta debe estar vacia.");
+                ". Esperando cierre manual; maximo " + config.FondoSegundos +
+                " s. La puerta debe estar vacia.");
             return true;
         }
 
@@ -707,6 +811,9 @@ namespace PortalAgent
             Logger logger,
             AgentConfig config)
         {
+            Dictionary<string, List<Reading>> debugBatches = new Dictionary<string, List<Reading>>();
+            Dictionary<string, Reading> debugUnicos = new Dictionary<string, Reading>();
+
             foreach (ReaderWorker worker in workers.Values)
             {
                 if (trainingPortal != "" && worker.Portal != trainingPortal) { continue; }
@@ -715,15 +822,62 @@ namespace PortalAgent
                 {
                     string key = worker.Portal + "|" + worker.Ip + "|" + reading.Epc;
                     int count;
-                    trainingCounts.TryGetValue(key, out count);
+                    bool nuevo = !trainingCounts.TryGetValue(key, out count);
                     trainingCounts[key] = count + 1;
+                    if (nuevo) { trainingLastNewAt = DateTime.Now; }
+
+                    string debugKey = worker.Portal + "|" + reading.Epc;
+                    Reading debug;
+                    if (debugUnicos.TryGetValue(debugKey, out debug))
+                    {
+                        debug.Repeticiones++;
+                    }
+                    else
+                    {
+                        reading.Repeticiones = 1;
+                        debugUnicos[debugKey] = reading;
+                        if (!debugBatches.ContainsKey(worker.Portal))
+                        {
+                            debugBatches[worker.Portal] = new List<Reading>();
+                        }
+                        debugBatches[worker.Portal].Add(reading);
+                    }
                 }
             }
 
-            if (DateTime.Now < trainingUntil) { return; }
+            foreach (KeyValuePair<string, List<Reading>> batch in debugBatches)
+            {
+                try
+                {
+                    api.SendDebugReadings(batch.Key, batch.Value);
+                }
+                catch (Exception ex)
+                {
+                    logger.Error("Progreso de aprendizaje " + batch.Key + ": " + ex.Message);
+                }
+            }
 
+            DateTime ahora = DateTime.Now;
+            bool sinNuevos = config.FondoSilencioSegundos > 0 &&
+                (ahora - trainingLastNewAt).TotalSeconds >= config.FondoSilencioSegundos;
+            bool maximo = ahora >= trainingUntil;
+            if (!sinNuevos && !maximo) { return; }
+
+            FinishTraining(workers, api, logger, config,
+                maximo ? "limite maximo de " + config.FondoSegundos + " s" :
+                    config.FondoSilencioSegundos + " s sin EPCs nuevos");
+        }
+
+        private static int FinishTraining(
+            Dictionary<string, ReaderWorker> workers,
+            ApiClient api,
+            Logger logger,
+            AgentConfig config,
+            string motivo)
+        {
             training = false;
             int totalLearned = 0;
+            DateTime ahora = DateTime.Now;
             foreach (ReaderWorker worker in workers.Values)
             {
                 if (trainingPortal != "" && worker.Portal != trainingPortal) { continue; }
@@ -753,12 +907,16 @@ namespace PortalAgent
             if (trainingCommandId > 0)
             {
                 AckCommand(api, trainingCommandId, "Ejecutado",
-                    "Fondo aprendido: " + totalLearned + " EPCs.");
+                    "Fondo aprendido: " + totalLearned + " EPCs en " +
+                    Math.Max(1, (int)(ahora - trainingStartedAt).TotalSeconds) + " s.");
             }
+
+            logger.Info("Aprendizaje finalizado por " + motivo + ".");
 
             trainingCounts.Clear();
             trainingPortal = "";
             trainingCommandId = 0;
+            return totalLearned;
         }
 
         private static void ClearBackground(

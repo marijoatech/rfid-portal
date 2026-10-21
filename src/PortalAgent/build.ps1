@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$sdk = 'C:\wamp64\www\rfid-portal\libs\C#\dll\SReaderAPI.dll'
+$sdk = 'C:\wamp64\www\rfid-portal\libs\Demo3.71311\SReaderAPI.dll'
 $newton = Join-Path $here 'lib\Newtonsoft.Json.dll'
 $dist = Join-Path $here 'dist'
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'

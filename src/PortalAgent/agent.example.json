@@ -7,7 +7,8 @@
   "DedupeSegundos": 60,
   "LogEpcs": false,
   "ResumenLogSegundos": 60,
-  "FondoSegundos": 12,
+  "FondoSegundos": 180,
+  "FondoSilencioSegundos": 0,
   "FondoMinLecturas": 2,
   "LogArchivo": "logs/portal-agent.log"
 }

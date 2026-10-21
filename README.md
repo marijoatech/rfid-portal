@@ -126,6 +126,12 @@ tenga salida HTTP/HTTPS al servidor Marijoa y alcance `192.168.3.60`.
 - El fondo aprendido filtra ruido no documentado, pero **no bloquea una pieza que
   despues sale en una sesion**. Si un EPC del fondo aparece en la sesion, se acepta;
   si cambia la zona, se limpia y se vuelve a entrenar.
+- El aprendizaje usa la potencia real de operacion y continua hasta que el
+  operador presiona **Terminar aprendizaje**, con un maximo de seguridad de 180
+  segundos. Solo guarda EPCs vistos al menos dos veces.
+- **Probar cobertura** es una captura temporal separada que incluye tambien los
+  EPCs del fondo. Sirve para colocar rollos conocidos y comprobar cuales alcanza
+  el portal sin modificar el fondo guardado.
 - La potencia de calibracion se ajusta desde **Portales RFID** en Marijoa. Un solo
   control cambia todos los puertos del lector; el agente aplica la orden al hardware
   y confirma el resultado. El punto inicial medido es 16-18 dBm.
@@ -133,7 +139,16 @@ tenga salida HTTP/HTTPS al servidor Marijoa y alcance `192.168.3.60`.
   ultimos lotes vistos. El detalle EPC por EPC queda en `rfid_hist`; `LogEpcs: true`
   se reserva para diagnostico y genera mucho mas volumen.
 
-### Diagnostico de GPO / sirena externa
+### Diagnostico de GPO / salidas externas
+
+El SDK 3.7 expone cuatro salidas:
+
+| GPO | Funcion |
+|---|---|
+| 1 | Luz roja |
+| 2 | Luz amarilla |
+| 3 | Luz verde |
+| 4 | Parlante/alarma |
 
 `Ejecutado` en Marijoa significa que el SDK del lector acepto el pulso GPO. No
 demuestra por si solo que una sirena, baliza o rele externo haya quedado conectado.

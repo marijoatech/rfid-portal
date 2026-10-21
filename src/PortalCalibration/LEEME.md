@@ -37,6 +37,16 @@ la vista. No hay exportacion CSV: todo se mira en pantalla.
 Las pruebas de GPO y buzzer requieren conexion por red (no serial). Detener la
 lectura antes de probarlas. El pulso GPO se configura en segundos.
 
+El SDK 3.7 del fabricante agrega una cuarta salida:
+
+- GPO 1: luz roja.
+- GPO 2: luz amarilla.
+- GPO 3: luz verde.
+- GPO 4: parlante/alarma.
+
+El check **Buzzer del lector** sigue siendo el buzzer interno del equipo y es
+independiente del parlante externo conectado a GPO 4.
+
 ## Problemas frecuentes
 
 - **No conecta**: verificar IP, ping, cable y que la PC pueda rutear a

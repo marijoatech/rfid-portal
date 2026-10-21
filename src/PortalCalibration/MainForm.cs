@@ -52,6 +52,7 @@ namespace PortalCalibration
         private Button btnGpo1;
         private Button btnGpo2;
         private Button btnGpo3;
+        private Button btnGpo4;
         private ToolTip helpTip;
 
         public MainForm()
@@ -426,21 +427,25 @@ namespace PortalCalibration
             numGpoSeconds.SetBounds(95, 24, 55, 24);
             gpo.Controls.Add(numGpoSeconds);
 
-            btnGpo1 = MakeButton("GPO 1", 165, 23, 75, 28);
+            btnGpo1 = MakeButton("1 Roja", 165, 23, 75, 28);
             btnGpo1.Click += delegate { PulseGpo(1); };
             gpo.Controls.Add(btnGpo1);
 
-            btnGpo2 = MakeButton("GPO 2", 248, 23, 75, 28);
+            btnGpo2 = MakeButton("2 Amarilla", 244, 23, 88, 28);
             btnGpo2.Click += delegate { PulseGpo(2); };
             gpo.Controls.Add(btnGpo2);
 
-            btnGpo3 = MakeButton("GPO 3", 331, 23, 75, 28);
+            btnGpo3 = MakeButton("3 Verde", 336, 23, 78, 28);
             btnGpo3.Click += delegate { PulseGpo(3); };
             gpo.Controls.Add(btnGpo3);
 
+            btnGpo4 = MakeButton("4 Parlante", 418, 23, 92, 28);
+            btnGpo4.Click += delegate { PulseGpo(4); };
+            gpo.Controls.Add(btnGpo4);
+
             chkBuzzer = new CheckBox();
             chkBuzzer.Text = "Buzzer del lector";
-            chkBuzzer.SetBounds(430, 27, 150, 22);
+            chkBuzzer.SetBounds(520, 27, 150, 22);
             chkBuzzer.CheckedChanged += delegate { BuzzerChanged(); };
             gpo.Controls.Add(chkBuzzer);
 
@@ -1016,6 +1021,7 @@ namespace PortalCalibration
             btnGpo1.Enabled = connected && !scanning;
             btnGpo2.Enabled = connected && !scanning;
             btnGpo3.Enabled = connected && !scanning;
+            btnGpo4.Enabled = connected && !scanning;
             chkBuzzer.Enabled = connected && !scanning;
         }
 

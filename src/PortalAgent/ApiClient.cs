@@ -55,6 +55,30 @@ namespace PortalAgent
             return Post(data);
         }
 
+        public JObject SendDebugReadings(string portal, List<Reading> readings)
+        {
+            JArray array = new JArray();
+            foreach (Reading reading in readings)
+            {
+                JObject item = new JObject();
+                item["epc"] = reading.Epc;
+                item["lote"] = reading.Lote;
+                item["ant"] = reading.Ant;
+                item["rssi"] = reading.Rssi;
+                item["repeticiones"] = reading.Repeticiones;
+                item["fecha"] = reading.SeenAt.ToString("yyyy-MM-dd HH:mm:ss");
+                array.Add(item);
+            }
+
+            NameValueCollection data = new NameValueCollection();
+            data["accion"] = "lecturas_debug";
+            data["agente"] = config.Agente;
+            data["token"] = config.Token;
+            data["portal"] = portal;
+            data["lecturas"] = array.ToString(Formatting.None);
+            return Post(data);
+        }
+
         public JObject SetBackground(string portal, int idLector, List<string> epcs, string modo)
         {
             NameValueCollection data = new NameValueCollection();
