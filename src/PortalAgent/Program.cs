@@ -406,6 +406,34 @@ namespace PortalAgent
                         logger.Info("Potencia " + potencia + " dBm encolada para " +
                             objetivos.Count + " lector(es) de " + codigo + ".");
                     }
+                    else if (tipo == "RECARGAR_LECTOR")
+                    {
+                        List<string> retirar = new List<string>();
+                        foreach (KeyValuePair<string, ReaderWorker> item in workers)
+                        {
+                            if (item.Value.Portal == codigo) { retirar.Add(item.Key); }
+                        }
+
+                        foreach (string key in retirar)
+                        {
+                            ReaderWorker worker = workers[key];
+                            try { worker.Stop(); } catch { }
+                            workers.Remove(key);
+                        }
+
+                        if (retirar.Count > 0)
+                        {
+                            AckCommand(api, idComando, "Ejecutado",
+                                "Lector recargado con la nueva configuracion.");
+                            logger.Info("Lector recargado para " + codigo +
+                                ": " + retirar.Count + " conexion(es).");
+                        }
+                        else
+                        {
+                            AckCommand(api, idComando, "Error",
+                                "No hay lector local para recargar.");
+                        }
+                    }
                     else if (tipo == "INICIAR_LOG" || tipo == "INICIAR_COBERTURA" ||
                         tipo == "DETENER_LOG")
                     {
