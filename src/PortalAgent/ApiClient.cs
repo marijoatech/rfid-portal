@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Net;
 using System.Text;
+using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -106,21 +107,38 @@ namespace PortalAgent
 
         private JObject Post(NameValueCollection data)
         {
-            using (WebClient client = new WebClient())
+            WebException lastNetworkError = null;
+
+            for (int intento = 0; intento < 2; intento++)
             {
-                client.Encoding = Encoding.UTF8;
-                client.Headers[HttpRequestHeader.ContentType] = "application/x-www-form-urlencoded";
-                byte[] response = client.UploadValues(config.MarijoaUrl, "POST", data);
-                string text = Encoding.UTF8.GetString(response);
-                JObject result = JObject.Parse(text);
-                string estado = (string) result["estado"];
-                if (estado != "Ok")
+                try
                 {
-                    string mensaje = (string) result["mensaje"];
-                    throw new InvalidOperationException("API: " + (string.IsNullOrEmpty(mensaje) ? text : mensaje));
+                    using (WebClient client = new WebClient())
+                    {
+                        client.Encoding = Encoding.UTF8;
+                        client.Headers[HttpRequestHeader.ContentType] = "application/x-www-form-urlencoded";
+                        client.Headers[HttpRequestHeader.Connection] = "close";
+                        byte[] response = client.UploadValues(config.MarijoaUrl, "POST", data);
+                        string text = Encoding.UTF8.GetString(response);
+                        JObject result = JObject.Parse(text);
+                        string estado = (string) result["estado"];
+                        if (estado != "Ok")
+                        {
+                            string mensaje = (string) result["mensaje"];
+                            throw new InvalidOperationException("API: " +
+                                (string.IsNullOrEmpty(mensaje) ? text : mensaje));
+                        }
+                        return result;
+                    }
                 }
-                return result;
+                catch (WebException ex)
+                {
+                    lastNetworkError = ex;
+                    if (intento == 0) { Thread.Sleep(300); }
+                }
             }
+
+            throw lastNetworkError;
         }
     }
 }

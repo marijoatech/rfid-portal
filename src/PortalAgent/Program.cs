@@ -680,7 +680,9 @@ namespace PortalAgent
                     {
                         JObject result = api.SendReadings(portal, idSesion, chunk);
                         UpdateLogSummary(portal, codigoSesion, chunk, result);
-                        int alertasNoDoc = (int) result["alertas_no_doc"];
+                        int alertasNoDoc = result["alertas_no_doc"] != null
+                            ? (int) result["alertas_no_doc"]
+                            : 0;
                         if (alertasNoDoc > 0)
                         {
                             foreach (ReaderWorker worker in workers.Values)

@@ -135,6 +135,13 @@ tenga salida HTTP/HTTPS al servidor Marijoa y alcance `192.168.3.60`.
 - Sin sesion armada, un EPC fuera del fondo que no pertenece a ningun documento
   abierto activa luz roja y alarma sonora. La misma alerta no se repite durante
   5 minutos. El sonido se puede silenciar por portal sin desactivar la luz roja.
+- Al confirmar una remision o factura, sus EPCs se registran en
+  `exp_portal_transito`. Mientras el documento siga En Proceso, las repeticiones
+  en el portal de origen se omiten. Al cerrarse en destino o cumplirse la
+  vigencia de 7 dias, dejan de considerarse en transito.
+- Una sesion de expedicion puede **Postergarse** para liberar el portal sin
+  borrarla. Las sesiones sin actividad durante 24 horas pasan a **Caducada**;
+  nunca se elimina el historial.
 - La potencia de calibracion se ajusta desde **Portales RFID** en Marijoa. Un solo
   control cambia todos los puertos del lector; el agente aplica la orden al hardware
   y confirma el resultado. El punto inicial medido es 16-18 dBm.
