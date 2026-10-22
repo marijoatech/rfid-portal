@@ -64,7 +64,7 @@ potencia al lector.
 1. Dejar la puerta **vacia** (sin piezas en transito).
 2. Verificar que `PortalAgent.exe` este corriendo.
 3. Ejecutar `Aprender-fondo.cmd`.
-4. El agente guarda los EPC vistos 2 o mas veces. El aprendizaje continua hasta
+4. El agente guarda todos los EPC detectados, incluidos los vistos una sola vez. El aprendizaje continua hasta
    presionar **Terminar aprendizaje**, con un maximo de seguridad de 180 segundos.
 5. Desde ese momento esos EPC no se envian a Marijoa.
 

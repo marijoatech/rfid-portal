@@ -128,10 +128,13 @@ tenga salida HTTP/HTTPS al servidor Marijoa y alcance `192.168.3.60`.
   si cambia la zona, se limpia y se vuelve a entrenar.
 - El aprendizaje usa la potencia real de operacion y continua hasta que el
   operador presiona **Terminar aprendizaje**, con un maximo de seguridad de 180
-  segundos. Solo guarda EPCs vistos al menos dos veces.
+  segundos. Guarda todos los EPCs detectados, incluidos los vistos una sola vez.
 - **Probar cobertura** es una captura temporal separada que incluye tambien los
   EPCs del fondo. Sirve para colocar rollos conocidos y comprobar cuales alcanza
   el portal sin modificar el fondo guardado.
+- Sin sesion armada, un EPC fuera del fondo que no pertenece a ningun documento
+  abierto activa luz roja y alarma sonora. La misma alerta no se repite durante
+  5 minutos. El sonido se puede silenciar por portal sin desactivar la luz roja.
 - La potencia de calibracion se ajusta desde **Portales RFID** en Marijoa. Un solo
   control cambia todos los puertos del lector; el agente aplica la orden al hardware
   y confirma el resultado. El punto inicial medido es 16-18 dBm.

@@ -9,6 +9,6 @@
   "ResumenLogSegundos": 60,
   "FondoSegundos": 180,
   "FondoSilencioSegundos": 0,
-  "FondoMinLecturas": 2,
+  "FondoMinLecturas": 1,
   "LogArchivo": "logs/portal-agent.log"
 }

@@ -39,6 +39,11 @@ namespace PortalAgent
             public string Message;
         }
 
+        private sealed class UnknownAlert
+        {
+            public int Count;
+        }
+
         private sealed class AntennaConfig
         {
             public int Puerto;
@@ -51,6 +56,7 @@ namespace PortalAgent
         private readonly ConcurrentQueue<GpoResult> gpoResults = new ConcurrentQueue<GpoResult>();
         private readonly ConcurrentQueue<PowerCommand> powerQueue = new ConcurrentQueue<PowerCommand>();
         private readonly ConcurrentQueue<PowerResult> powerResults = new ConcurrentQueue<PowerResult>();
+        private readonly ConcurrentQueue<UnknownAlert> alertQueue = new ConcurrentQueue<UnknownAlert>();
         private readonly List<AntennaConfig> activeAntennas = new List<AntennaConfig>();
         private readonly HashSet<string> background = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Logger logger;
@@ -59,6 +65,11 @@ namespace PortalAgent
         private volatile bool running;
         private volatile bool liveLogEnabled;
         private volatile bool coverageEnabled;
+        private volatile bool alarmSoundEnabled = true;
+        private bool alertPatternActive;
+        private bool alertContinuous;
+        private int alertBeepsRemaining;
+        private DateTime nextAlertStep;
         private Thread thread;
         private SReader reader;
 
@@ -78,6 +89,11 @@ namespace PortalAgent
             set { coverageEnabled = value; }
         }
         public DateTime LiveLogUntil { get; set; }
+        public bool AlarmSoundEnabled
+        {
+            get { return alarmSoundEnabled; }
+            set { alarmSoundEnabled = value; }
+        }
 
         public ReaderWorker(string portal, string ip, int idLector, int channels, JArray antennaRows, Logger logger)
         {
@@ -194,6 +210,14 @@ namespace PortalAgent
             return results;
         }
 
+        public void EnqueueUnknownAlert(int count)
+        {
+            if (count <= 0) { return; }
+            UnknownAlert alert = new UnknownAlert();
+            alert.Count = Math.Min(100, count);
+            alertQueue.Enqueue(alert);
+        }
+
         private void Loop()
         {
             while (running)
@@ -254,6 +278,8 @@ namespace PortalAgent
 
                             powerResults.Enqueue(result);
                         }
+
+                        ProcessUnknownAlerts();
 
                         GpoCommand gpo;
                         while (gpoQueue.TryDequeue(out gpo))
@@ -358,6 +384,73 @@ namespace PortalAgent
             if (reader == null) { throw new InvalidOperationException("No hay lector conectado."); }
             if (channels > 1) { reader.SetPortReadPower((int[])portPowers.Clone()); }
             else { reader.SetReaderPower(portPowers[0]); }
+        }
+
+        private void ProcessUnknownAlerts()
+        {
+            if (reader == null) { return; }
+            DateTime now = DateTime.Now;
+
+            if (!alertPatternActive)
+            {
+                UnknownAlert alert;
+                if (!alertQueue.TryDequeue(out alert)) { return; }
+
+                alertPatternActive = true;
+                alertContinuous = alert.Count > 3;
+                alertBeepsRemaining = alertContinuous ? 1 : Math.Max(1, alert.Count);
+                nextAlertStep = now.AddSeconds(1);
+
+                try
+                {
+                    reader.SetGPO(1, 1, alertContinuous ? 6 : 8);
+                    logger.Info("Alerta de salida sin documento en " + Ip + ": " +
+                        alert.Count + " EPC(s). Rojo activo; sonido " +
+                        (alarmSoundEnabled ? "activo." : "silenciado."));
+                }
+                catch (Exception ex)
+                {
+                    logger.Error("Alerta roja en " + Ip + ": " + ex.Message);
+                    alertPatternActive = false;
+                }
+
+                if (!alarmSoundEnabled)
+                {
+                    alertPatternActive = false;
+                }
+                return;
+            }
+
+            if (now < nextAlertStep) { return; }
+
+            try
+            {
+                if (alertContinuous)
+                {
+                    reader.SetGPO(4, 1, 3);
+                    alertPatternActive = false;
+                    return;
+                }
+
+                if (alertBeepsRemaining > 0)
+                {
+                    reader.SetGPO(4, 1, 1);
+                    alertBeepsRemaining--;
+                    if (alertBeepsRemaining > 0)
+                    {
+                        nextAlertStep = now.AddMilliseconds(1700);
+                    }
+                    else
+                    {
+                        alertPatternActive = false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Alerta sonora en " + Ip + ": " + ex.Message);
+                alertPatternActive = false;
+            }
         }
 
         private static string Normalize(string epc)

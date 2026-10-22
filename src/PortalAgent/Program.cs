@@ -171,6 +171,8 @@ namespace PortalAgent
                 string codigo = (string) portal["codigo"];
                 portalCodes[(int) portal["id_portal"]] = codigo;
                 JObject sesion = portal["sesion"] as JObject;
+                bool alarmaSonora = portal["alarma_sonora"] == null ||
+                    (bool) portal["alarma_sonora"];
                 int idSesion = 0;
                 string codigoSesion = "";
 
@@ -224,6 +226,7 @@ namespace PortalAgent
                     if (workers.ContainsKey(key))
                     {
                         workers[key].SetBackground(fondo);
+                        workers[key].AlarmSoundEnabled = alarmaSonora;
                         continue;
                     }
 
@@ -232,6 +235,7 @@ namespace PortalAgent
                     JArray antenas = lector["antenas"] as JArray;
                     ReaderWorker worker = new ReaderWorker(codigo, ip, idLector, canales, antenas, logger);
                     worker.SetBackground(fondo);
+                    worker.AlarmSoundEnabled = alarmaSonora;
                     workers[key] = worker;
                     worker.Start();
                     logger.Info("Agregado lector " + ip + " para portal " + codigo + ".");
@@ -436,6 +440,33 @@ namespace PortalAgent
                         {
                             AckCommand(api, idComando, "Error", "No hay lector local para el log.");
                         }
+                    }
+                    else if (tipo == "CONFIGURAR_ALARMA")
+                    {
+                        bool sonora = true;
+                        string payload = (string) comando["payload"];
+                        if (!string.IsNullOrEmpty(payload))
+                        {
+                            try
+                            {
+                                JObject datos = JObject.Parse(payload);
+                                if (datos["sonora"] != null) { sonora = (int) datos["sonora"] == 1; }
+                            }
+                            catch { }
+                        }
+
+                        bool encontrado = false;
+                        foreach (ReaderWorker worker in workers.Values)
+                        {
+                            if (worker.Portal != codigo) { continue; }
+                            worker.AlarmSoundEnabled = sonora;
+                            encontrado = true;
+                        }
+
+                        AckCommand(api, idComando, encontrado ? "Ejecutado" : "Error",
+                            encontrado
+                                ? (sonora ? "Alarma sonora activada." : "Alarma sonora silenciada.")
+                                : "No hay lector local para configurar la alarma.");
                     }
                 }
             }
@@ -649,6 +680,17 @@ namespace PortalAgent
                     {
                         JObject result = api.SendReadings(portal, idSesion, chunk);
                         UpdateLogSummary(portal, codigoSesion, chunk, result);
+                        int alertasNoDoc = (int) result["alertas_no_doc"];
+                        if (alertasNoDoc > 0)
+                        {
+                            foreach (ReaderWorker worker in workers.Values)
+                            {
+                                if (worker.Portal == portal)
+                                {
+                                    worker.EnqueueUnknownAlert(alertasNoDoc);
+                                }
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
