@@ -113,11 +113,10 @@ namespace PortalAgent
             {
                 try
                 {
-                    using (WebClient client = new WebClient())
+                    using (NoKeepAliveWebClient client = new NoKeepAliveWebClient())
                     {
                         client.Encoding = Encoding.UTF8;
                         client.Headers[HttpRequestHeader.ContentType] = "application/x-www-form-urlencoded";
-                        client.Headers[HttpRequestHeader.Connection] = "close";
                         byte[] response = client.UploadValues(config.MarijoaUrl, "POST", data);
                         string text = Encoding.UTF8.GetString(response);
                         JObject result = JObject.Parse(text);
@@ -138,7 +137,49 @@ namespace PortalAgent
                 }
             }
 
-            throw lastNetworkError;
+            if (lastNetworkError == null)
+            {
+                throw new InvalidOperationException("No se pudo completar la solicitud a Marijoa.");
+            }
+
+            StringBuilder detalle = new StringBuilder();
+            detalle.Append(lastNetworkError.Status);
+            HttpWebResponse httpResponse = lastNetworkError.Response as HttpWebResponse;
+            if (httpResponse != null)
+            {
+                detalle.Append(" | HTTP ");
+                detalle.Append((int)httpResponse.StatusCode);
+                detalle.Append(" ");
+                detalle.Append(httpResponse.StatusDescription);
+            }
+            if (lastNetworkError.InnerException != null)
+            {
+                detalle.Append(" | ");
+                detalle.Append(lastNetworkError.InnerException.Message);
+            }
+            else if (!string.IsNullOrEmpty(lastNetworkError.Message))
+            {
+                detalle.Append(" | ");
+                detalle.Append(lastNetworkError.Message);
+            }
+
+            throw new InvalidOperationException("No se pudo conectar con Marijoa: " + detalle);
+        }
+
+        private sealed class NoKeepAliveWebClient : WebClient
+        {
+            protected override WebRequest GetWebRequest(Uri address)
+            {
+                WebRequest request = base.GetWebRequest(address);
+                HttpWebRequest http = request as HttpWebRequest;
+                if (http != null)
+                {
+                    http.KeepAlive = false;
+                    http.Timeout = 15000;
+                    http.ReadWriteTimeout = 15000;
+                }
+                return request;
+            }
         }
     }
 }
