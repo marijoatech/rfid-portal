@@ -356,7 +356,13 @@ namespace PortalAgent
                 TagData tag = e.TagData;
                 string epc = (tag.EpcString ?? "").Trim();
                 string lote = Normalize(epc);
-                if (lote == "") { return; }
+                if (lote == "")
+                {
+                    // Etiqueta sin programar o grabada solo con ceros. Se envia
+                    // como caso especial para que Marijoa la muestre en Ajenas.
+                    lote = "ETIQUETA_BLANCO";
+                    if (epc.Length == 0) { epc = "000000000000000000000000"; }
+                }
 
                 int rssiMin = -80;
                 foreach (AntennaConfig antenna in activeAntennas)

@@ -647,7 +647,7 @@ namespace PortalAgent
                         continue;
                     }
 
-                    string key = worker.Portal + "|" + reading.Epc;
+                    string key = worker.Portal + "|" + worker.Ip + "|" + reading.Ant + "|" + reading.Epc;
                     DateTime last;
                     if (lastSent.TryGetValue(key, out last) &&
                         (DateTime.Now - last).TotalSeconds < dedupeSeconds)
@@ -708,6 +708,16 @@ namespace PortalAgent
                     {
                         JObject result = api.SendReadings(portal, idSesion, chunk);
                         UpdateLogSummary(portal, codigoSesion, chunk, result);
+                        bool sesionFinalizada = result["sesion_finalizada"] != null &&
+                            (bool)result["sesion_finalizada"];
+                        if (sesionFinalizada)
+                        {
+                            sessions.Remove(portal);
+                            sessionCodes.Remove(portal);
+                            logger.Info("Sesion finalizada en " + portal +
+                                "; se descartan las lecturas pendientes.");
+                            break;
+                        }
                         int alertasNoDoc = result["alertas_no_doc"] != null
                             ? (int) result["alertas_no_doc"]
                             : 0;

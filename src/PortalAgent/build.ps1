@@ -12,6 +12,22 @@ if (-not (Test-Path -LiteralPath $csc)) {
 if (-not (Test-Path -LiteralPath $sdk)) { throw "No se encontro SReaderAPI.dll: $sdk" }
 if (-not (Test-Path -LiteralPath $newton)) { throw "No se encontro Newtonsoft.Json.dll: $newton" }
 
+function Copy-IfChanged($source, $destination) {
+    $target = Join-Path $destination (Split-Path -Leaf $source)
+
+    if (Test-Path -LiteralPath $target) {
+        try {
+            $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash
+            $destinationHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash
+            if ($sourceHash -eq $destinationHash) { return }
+        } catch {
+            throw "No se pudo comparar $target. Cierre el proceso que lo esta usando."
+        }
+    }
+
+    Copy-Item -LiteralPath $source -Destination $target -Force
+}
+
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
 $sources = @(
@@ -38,8 +54,8 @@ $args = @(
 & $csc $args
 if ($LASTEXITCODE -ne 0) { throw "csc fallo con codigo $LASTEXITCODE" }
 
-Copy-Item -LiteralPath $sdk -Destination $dist -Force
-Copy-Item -LiteralPath $newton -Destination $dist -Force
+Copy-IfChanged $sdk $dist
+Copy-IfChanged $newton $dist
 Copy-Item -LiteralPath (Join-Path $here 'LEEME.md') -Destination $dist -Force
 Copy-Item -LiteralPath (Join-Path $here 'Aprender-fondo.cmd') -Destination $dist -Force
 Copy-Item -LiteralPath (Join-Path $here 'Limpiar-fondo.cmd') -Destination $dist -Force
@@ -51,7 +67,16 @@ if (-not (Test-Path -LiteralPath $config)) {
 
 $zip = Join-Path $here 'PortalAgent.zip'
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-Compress-Archive -Path (Join-Path $dist '*') -DestinationPath $zip -Force
+$packageFiles = @(
+    (Join-Path $dist 'PortalAgent.exe'),
+    (Join-Path $dist 'SReaderAPI.dll'),
+    (Join-Path $dist 'Newtonsoft.Json.dll'),
+    (Join-Path $dist 'LEEME.md'),
+    (Join-Path $dist 'Aprender-fondo.cmd'),
+    (Join-Path $dist 'Limpiar-fondo.cmd'),
+    (Join-Path $here 'agent.example.json')
+)
+Compress-Archive -LiteralPath $packageFiles -DestinationPath $zip -Force
 
 Write-Host ('OK: ' + (Join-Path $dist 'PortalAgent.exe'))
 Write-Host ('ZIP: ' + $zip)
