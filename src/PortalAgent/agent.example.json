@@ -6,7 +6,7 @@
   "PollSegundos": 2,
   "DedupeSegundos": 60,
   "LogEpcs": false,
-  "ResumenLogSegundos": 60,
+  "ResumenLogSegundos": 0,
   "FondoSegundos": 180,
   "FondoSilencioSegundos": 0,
   "FondoMinLecturas": 1,

@@ -22,7 +22,7 @@ lectores que se quieren probar:
   "PollSegundos": 2,
   "DedupeSegundos": 60,
   "LogEpcs": false,
-  "ResumenLogSegundos": 60,
+  "ResumenLogSegundos": 0,
   "FondoSegundos": 180,
   "FondoSilencioSegundos": 0,
   "LogArchivo": "logs/portal-agent.log"
@@ -46,9 +46,9 @@ PortalAgent.exe
 El agente consulta Marijoa cada 2 segundos, conecta el lector, lee y envia.
 Con `Ctrl+C` se detiene.
 
-Por defecto `LogEpcs` es `false`: el log escribe un resumen por portal cada 60
-segundos con cantidades enviadas/guardadas/repetidas y los ultimos 3 lotes, en
-lugar de una linea por cada EPC. Para diagnostico detallado se puede usar
+Por defecto `ResumenLogSegundos` es `0`: no se escriben resumenes periodicos.
+Un valor mayor a cero habilita un resumen por portal con esa frecuencia, por
+ejemplo `60` para cantidades cada minuto. Para diagnostico detallado se puede usar
 `LogEpcs: true`; en ese caso tambien registra EPC, lote, antena y RSSI de cada
 lectura aceptada. El historial completo de pasos sigue en `rfid_hist`, no en el
 archivo de texto. El log rota a los 5 MB y conserva un archivo anterior

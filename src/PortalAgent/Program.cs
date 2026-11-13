@@ -227,15 +227,18 @@ namespace PortalAgent
                     {
                         workers[key].SetBackground(fondo);
                         workers[key].AlarmSoundEnabled = alarmaSonora;
+                        workers[key].SetGpoConfig(portal["salidas_gpo"] as JObject);
                         continue;
                     }
 
                     int idLector = (int) lector["id_lector"];
                     int canales = (int) lector["canales"];
                     JArray antenas = lector["antenas"] as JArray;
-                    ReaderWorker worker = new ReaderWorker(codigo, ip, idLector, canales, antenas, logger);
+                    ReaderWorker worker = new ReaderWorker(codigo, (string)portal["nombre"],
+                        ip, idLector, canales, antenas, logger);
                     worker.SetBackground(fondo);
                     worker.AlarmSoundEnabled = alarmaSonora;
+                    worker.SetGpoConfig(portal["salidas_gpo"] as JObject);
                     workers[key] = worker;
                     worker.Start();
                     logger.Info("Agregado lector " + ip + " para portal " + codigo + ".");
@@ -707,7 +710,10 @@ namespace PortalAgent
                     try
                     {
                         JObject result = api.SendReadings(portal, idSesion, chunk);
-                        UpdateLogSummary(portal, codigoSesion, chunk, result);
+                        if (summarySeconds > 0)
+                        {
+                            UpdateLogSummary(portal, codigoSesion, chunk, result);
+                        }
                         bool sesionFinalizada = result["sesion_finalizada"] != null &&
                             (bool)result["sesion_finalizada"];
                         if (sesionFinalizada)
@@ -723,11 +729,22 @@ namespace PortalAgent
                             : 0;
                         if (alertasNoDoc > 0)
                         {
+                            List<string> lotesAlerta = new List<string>();
+                            JArray alertasLotes = result["alertas_lotes"] as JArray;
+                            if (alertasLotes != null)
+                            {
+                                foreach (JToken lote in alertasLotes)
+                                {
+                                    string valor = ((string)lote ?? "").Trim();
+                                    if (valor != "") { lotesAlerta.Add(valor); }
+                                }
+                            }
+
                             foreach (ReaderWorker worker in workers.Values)
                             {
                                 if (worker.Portal == portal)
                                 {
-                                    worker.EnqueueUnknownAlert(alertasNoDoc);
+                                    worker.EnqueueUnknownAlert(alertasNoDoc, lotesAlerta);
                                 }
                             }
                         }
@@ -774,7 +791,11 @@ namespace PortalAgent
 
         private static void FlushLogSummaries(Logger logger, int summarySeconds)
         {
-            if (summarySeconds <= 0) { summarySeconds = 60; }
+            if (summarySeconds <= 0)
+            {
+                logSummaries.Clear();
+                return;
+            }
             DateTime now = DateTime.Now;
 
             foreach (KeyValuePair<string, LogSummary> item in logSummaries)

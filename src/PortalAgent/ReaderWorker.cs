@@ -42,6 +42,7 @@ namespace PortalAgent
         private sealed class UnknownAlert
         {
             public int Count;
+            public string Lotes = "";
         }
 
         private sealed class AntennaConfig
@@ -66,6 +67,12 @@ namespace PortalAgent
         private volatile bool liveLogEnabled;
         private volatile bool coverageEnabled;
         private volatile bool alarmSoundEnabled = true;
+        private volatile int gpoRojo = 1;
+        private volatile int gpoAmarillo = 2;
+        private volatile int gpoVerde = 3;
+        private volatile int gpoAzul = 0;
+        private volatile int gpoSonido = 4;
+        private volatile bool sonidoEnRojo;
         private bool alertPatternActive;
         private bool alertContinuous;
         private int alertBeepsRemaining;
@@ -74,6 +81,7 @@ namespace PortalAgent
         private SReader reader;
 
         public string Portal { get; private set; }
+        public string PortalName { get; private set; }
         public string Ip { get; private set; }
         public int IdLector { get; private set; }
         public string LastError { get; private set; }
@@ -95,9 +103,34 @@ namespace PortalAgent
             set { alarmSoundEnabled = value; }
         }
 
-        public ReaderWorker(string portal, string ip, int idLector, int channels, JArray antennaRows, Logger logger)
+        public void SetGpoConfig(JObject config)
+        {
+            if (config == null)
+            {
+                gpoRojo = 1;
+                gpoAmarillo = 2;
+                gpoVerde = 3;
+                gpoAzul = 0;
+                gpoSonido = 4;
+                sonidoEnRojo = false;
+                return;
+            }
+
+            gpoRojo = Gpo(config["rojo"], 1);
+            gpoAmarillo = Gpo(config["amarillo"], 0);
+            gpoVerde = Gpo(config["verde"], 3);
+            gpoAzul = Gpo(config["azul"], 0);
+            gpoSonido = Gpo(config["sonido"], 0);
+            bool compartido = config["sonido_en_rojo"] != null &&
+                (bool)config["sonido_en_rojo"];
+            sonidoEnRojo = compartido || (gpoSonido > 0 && gpoSonido == gpoRojo);
+        }
+
+        public ReaderWorker(string portal, string portalName, string ip, int idLector,
+            int channels, JArray antennaRows, Logger logger)
         {
             Portal = portal;
+            PortalName = string.IsNullOrEmpty(portalName) ? portal : portalName;
             Ip = ip;
             IdLector = idLector;
             this.channels = channels > 0 ? channels : 8;
@@ -210,11 +243,25 @@ namespace PortalAgent
             return results;
         }
 
-        public void EnqueueUnknownAlert(int count)
+        public void EnqueueUnknownAlert(int count, List<string> lotes)
         {
             if (count <= 0) { return; }
             UnknownAlert alert = new UnknownAlert();
             alert.Count = Math.Min(100, count);
+            if (lotes != null)
+            {
+                List<string> valores = new List<string>();
+                HashSet<string> vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string lote in lotes)
+                {
+                    string valor = (lote ?? "").Trim();
+                    if (valor == "" || vistos.Contains(valor)) { continue; }
+                    vistos.Add(valor);
+                    valores.Add(valor);
+                    if (valores.Count >= 10) { break; }
+                }
+                alert.Lotes = string.Join(",", valores.ToArray());
+            }
             alertQueue.Enqueue(alert);
         }
 
@@ -402,6 +449,11 @@ namespace PortalAgent
                 UnknownAlert alert;
                 if (!alertQueue.TryDequeue(out alert)) { return; }
 
+                int rojo = gpoRojo;
+                int sonido = gpoSonido;
+                bool sonidoCompartido = sonidoEnRojo ||
+                    (sonido > 0 && sonido == rojo);
+
                 alertPatternActive = true;
                 alertContinuous = alert.Count > 3;
                 alertBeepsRemaining = alertContinuous ? 1 : Math.Max(1, alert.Count);
@@ -409,10 +461,15 @@ namespace PortalAgent
 
                 try
                 {
-                    reader.SetGPO(1, 1, alertContinuous ? 6 : 8);
-                    logger.Info("Alerta de salida sin documento en " + Ip + ": " +
-                        alert.Count + " EPC(s). Rojo activo; sonido " +
-                        (alarmSoundEnabled ? "activo." : "silenciado."));
+                    reader.SetGPO(rojo, 1, alertContinuous ? 6 : 8);
+                    logger.Info("Alerta de salida sin documento | Portal " + Portal +
+                        " (" + PortalName + ") | Lector " + Ip + " | " +
+                        alert.Count + " EPC(s) | Lotes: " +
+                        (alert.Lotes == "" ? "sin identificar" : alert.Lotes) +
+                        " | GPO " + rojo + " rojo activo; " +
+                        (sonidoCompartido
+                            ? "sonido integrado en el mismo GPO."
+                            : "sonido " + (alarmSoundEnabled ? "activo." : "silenciado.")));
                 }
                 catch (Exception ex)
                 {
@@ -420,7 +477,10 @@ namespace PortalAgent
                     alertPatternActive = false;
                 }
 
-                if (!alarmSoundEnabled)
+                // Un GPO compartido ya contiene el sonido y no requiere una
+                // secuencia separada. Con sonido independiente solo continuamos
+                // cuando la alarma sonora esta habilitada.
+                if (sonidoCompartido || !alarmSoundEnabled || sonido <= 0)
                 {
                     alertPatternActive = false;
                 }
@@ -433,14 +493,14 @@ namespace PortalAgent
             {
                 if (alertContinuous)
                 {
-                    reader.SetGPO(4, 1, 3);
+                    reader.SetGPO(gpoSonido, 1, 3);
                     alertPatternActive = false;
                     return;
                 }
 
                 if (alertBeepsRemaining > 0)
                 {
-                    reader.SetGPO(4, 1, 1);
+                    reader.SetGPO(gpoSonido, 1, 1);
                     alertBeepsRemaining--;
                     if (alertBeepsRemaining > 0)
                     {
@@ -470,6 +530,16 @@ namespace PortalAgent
             }
             string clean = text.TrimStart('0');
             return clean.Length == 0 ? "" : clean;
+        }
+
+        private static int Gpo(JToken value, int defaultGpo)
+        {
+            if (value == null || value.Type == JTokenType.Null) { return defaultGpo; }
+            int numero;
+            try { numero = (int)value; }
+            catch { return defaultGpo; }
+            if (numero <= 0) { return 0; }
+            return Math.Max(1, Math.Min(4, numero));
         }
 
         private static string Join(List<int> values)
